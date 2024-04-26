@@ -1,49 +1,86 @@
-import http.client
-import json
 import requests
-import re
+from bs4 import BeautifulSoup
+import datetime
 
-# Server酱的SCKEY，直接硬编码
-SCKEY = "SCT179362T7SSeEEZcUVRSyTxPTt6YiYtS"
+# 基金网站的URL
+fund_codes = ['018978', '004156']  # 添加需要查询的基金代码
+messages = []
+for fund_code in fund_codes:
+    url = f'https://fund.eastmoney.com/{fund_code}.html?spm=search'
 
-# 获取基金数据
-conn = http.client.HTTPSConnection("api.autostock.cn")
-payload = ''
-headers = {
-   'User-Agent': 'Apifox/1.0.0 (https://apifox.com)'
-}
-conn.request("GET", "/v1/fund?code=018978&code=004156", payload, headers)
-res = conn.getresponse()
-data = res.read()
+    # 发送GET请求
+    response = requests.get(url)
 
-# 解析JSON数据
-response_data = json.loads(data.decode("utf-8"))
+    # 检查请求是否成功
+    if response.status_code == 200:
+        # 使用BeautifulSoup解析HTML内容
+        soup = BeautifulSoup(response.text, 'html.parser')
 
-# 提取基金名字和今日涨幅
-fund_names = []
-day_growth_values = []
+        # 找到标题元素
+        title_element = soup.find('title')
 
-for fund in response_data.get("data", []):
-    fund_name = fund.get("name", "数据没更新")
-    day_growth = fund.get("dayGrowth", "数据没更新")
-    fund_names.append(fund_name)
-    day_growth_values.append(day_growth)
+        # 提取标题并指定编码为UTF-8
+        title = title_element.text.encode('iso-8859-1').decode('utf-8') if title_element else "Title not found"
 
-# 打印基金名字和今日涨幅
-output = ""
-for i, fund_name in enumerate(fund_names):
-    day_growth = day_growth_values[i]
-    if day_growth == "0.00":
-        output += f"基金名称: {fund_name}\n今日涨幅: {day_growth}% 说实话不如买余额宝\n"
-    elif day_growth.startswith("-"):  # 如果是负数，则表示亏损
-        output += f"基金名称: {fund_name}\n今日涨幅: {day_growth}% 跌{float(day_growth[1:]) * 100}个🥚噶牢弟 ^^_\n"
+        # 提取基金名称部分
+        fund_name = title.split('(')[0].strip()
+
+        # 输出基金名称部分和当前时间
+        current_time = datetime.datetime.now().strftime('%H:%M:%S')
+        messages.append(f"基金名称: {fund_name} | 运行时间: {current_time}")
+
+        # 找到包含时间和收益率的<tr>元素
+        data_rows = soup.find_all('tr')
+
+        # 获取当前日期
+        current_date = datetime.datetime.now().strftime('%m-%d')
+
+        # 初始化最新数据的时间戳和收益率
+        latest_time = ""
+        latest_rate = ""
+
+        # 遍历每个<tr>元素
+        for row in data_rows:
+            # 找到时间和收益率所在的<td>元素
+            time_element = row.find('td', class_='alignLeft')
+            rate_element = row.find('td', class_='RelatedInfo alignRight10 bold')
+
+            # 如果找到了时间和收益率元素，则提取并输出数据
+            if time_element and rate_element:
+                time = time_element.text.strip()  # 清除空白字符
+                rate = rate_element.span.text.strip()  # 获取收益率的文本
+
+                # 更新最新数据的时间戳和收益率
+                latest_time = time
+                latest_rate = rate
+
+                # 如果当前日期与最新数据日期一致，则输出最新数据并结束循环
+                if time == current_date:
+                    messages.append(f"时间: {time}, 收益率: {rate}")
+                    break
+
+        # 检查是否有更新数据
+        if latest_time == current_date:
+            messages.append("数据已更新")
+        else:
+            messages.append("数据未更新，显示昨天的数据：")
+            messages.append(f"时间: {latest_time}, 收益率: {latest_rate}")
+
     else:
-        output += f"基金名称: {fund_name}\n今日涨幅: {day_growth}% 涨{float(day_growth) * 100}个🥚 爽！！！！\n"
+        messages.append(f'Failed to retrieve the webpage. Status code: {response.status_code}')
+
+# 加入钉钉推送：
+DINGTALK_WEBHOOK_URL = "https://oapi.dingtalk.com/robot/send?access_token=68af6ef5d26f1338bf529e20b641c93b645b8034e3a5e69e4a00152c4010f8ac"
 
 # 发送推送
-if SCKEY:
-    push_url = 'https://sctapi.ftqq.com/{}.send?title=基金涨幅通知&desp={}'.format(SCKEY, output)
-    response = requests.post(url=push_url)
+if DINGTALK_WEBHOOK_URL:
+    # 构造钉钉消息
+    dingtalk_message = {
+        "msgtype": "text",
+        "text": {
+            "content": "\n\n".join(messages)
+        }
+    }
+    # 发送消息
+    response = requests.post(url=DINGTALK_WEBHOOK_URL, json=dingtalk_message)
     print(response.text)
-
-print(output)
