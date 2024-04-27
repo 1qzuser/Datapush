@@ -39,8 +39,8 @@ for fund_code in fund_codes:
         latest_time = ""
         latest_rate = ""
 
-        # 遍历每个<tr>元素
-        for row in data_rows:
+        # 遍历每个<tr>元素，跳过标题行
+        for row in data_rows[1:]:  # 跳过标题行
             # 找到时间和收益率所在的<td>元素
             time_element = row.find('td', class_='alignLeft')
             rate_element = row.find('td', class_='RelatedInfo alignRight10 bold')
@@ -54,33 +54,48 @@ for fund_code in fund_codes:
                 latest_time = time
                 latest_rate = rate
 
-                # 如果当前日期与最新数据日期一致，则输出最新数据并结束循环
+                # 检查当前日期与最新数据日期是否一致
                 if time == current_date:
                     messages.append(f"时间: {time}, 收益率: {rate}")
                     break
-
-        # 检查是否有更新数据
-        if latest_time == current_date:
-            messages.append("数据已更新")
         else:
-            messages.append("数据未更新，显示昨天的数据：")
-            messages.append(f"时间: {latest_time}, 收益率: {latest_rate}")
+            # 如果循环正常结束，说明没有找到当前日期的数据
+            # 计算前一天的日期
+            yesterday_date = (datetime.datetime.now() - datetime.timedelta(days=1)).strftime('%m-%d')
+            # 遍历数据行，找到前一天的数据
+            for row in data_rows[1:]:  # 跳过标题行
+                time_element = row.find('td', class_='alignLeft')
+                if time_element and time_element.text.strip() == yesterday_date:
+                    rate_element = row.find('td', class_='RelatedInfo alignRight10 bold')
+                    if rate_element:
+                        messages.append(f"数据未更新，显示昨天的数据：时间: {yesterday_date}, 收益率: {rate_element.span.text.strip()}")
+                        break
+            else:
+                # 如果前一天的数据也没有找到，尝试找到更早的数据
+                for row in data_rows[1:]:  # 跳过标题行
+                    time_element = row.find('td', class_='alignLeft')
+                    if time_element and time_element.text.strip() == (datetime.datetime.now() - datetime.timedelta(days=2)).strftime('%m-%d'):
 
-    else:
-        messages.append(f'Failed to retrieve the webpage. Status code: {response.status_code}')
+                        rate_element = row.find('td', class_='RelatedInfo alignRight10 bold')
+                        if rate_element:
+                            messages.append(
+                                f"数据未更新，显示更早的数据：时间: {time_element.text.strip()}, 收益率: {rate_element.span.text.strip()}")
+                            break
+                    else:
+                        messages.append("数据未更新，且未找到昨天的数据。")
 
-# 加入钉钉推送：
-DINGTALK_WEBHOOK_URL = "https://oapi.dingtalk.com/robot/send?access_token=68af6ef5d26f1338bf529e20b641c93b645b8034e3a5e69e4a00152c4010f8ac"
+    # 加入钉钉推送：
+    DINGTALK_WEBHOOK_URL = "https://oapi.dingtalk.com/robot/send?access_token=68af6ef5d26f1338bf529e20b641c93b645b8034e3a5e69e4a00152c4010f8ac"
 
-# 发送推送
-if DINGTALK_WEBHOOK_URL:
-    # 构造钉钉消息
-    dingtalk_message = {
-        "msgtype": "text",
-        "text": {
-            "content": "\n\n".join(messages)
+    # 发送推送
+    if DINGTALK_WEBHOOK_URL:
+        # 构造钉钉消息
+        dingtalk_message = {
+            "msgtype": "text",
+            "text": {
+                "content": "\n\n".join(messages)
+            }
         }
-    }
-    # 发送消息
-    response = requests.post(url=DINGTALK_WEBHOOK_URL, json=dingtalk_message)
-    print(response.text)
+        # 发送消息
+        response = requests.post(url=DINGTALK_WEBHOOK_URL, json=dingtalk_message)
+        print(response.text)
