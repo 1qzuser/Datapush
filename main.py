@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 import datetime
 
 # 基金网站的URL
-fund_codes = ['018978', '004156']  # 添加需要查询的基金代码
+fund_codes = ['007235', '008395','018978']  # 添加需要查询的基金代码
 messages = []
 for fund_code in fund_codes:
     url = f'https://fund.eastmoney.com/{fund_code}.html?spm=search'
